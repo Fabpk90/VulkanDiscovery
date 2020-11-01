@@ -1,6 +1,7 @@
 #include "Application.h"
 
 #include <iostream>
+#include <set>
 #include <vector>
 
 
@@ -88,12 +89,19 @@ Application::Application(int32_t height, int32_t width, const char* windowName)
 		std::cout << extensionName[i] << std::endl;
 	}
 
+	createSurface();
+
 	pickPhysicalDevice();
+	pickLogicalDevice();
 }
 
 Application::~Application()
 {
+	vkDestroyDevice(logicalDevice, nullptr);
+	
+	vkDestroySurfaceKHR(instance, surface, nullptr);
 	vkDestroyInstance(instance, nullptr);
+
 	
 	glfwDestroyWindow(window);
 	glfwTerminate();
@@ -109,6 +117,14 @@ void Application::run()
 		{
 			glfwSetWindowShouldClose(window, GLFW_TRUE);
 		}
+	}
+}
+
+void Application::createSurface()
+{
+	if(glfwCreateWindowSurface(instance, window, nullptr, &surface) != VK_SUCCESS)
+	{
+		std::cout << "Ay caramba, the surface could not be created" << std::endl;
 	}
 }
 
@@ -162,13 +178,99 @@ void Application::pickPhysicalDevice()
 	}
 }
 
+void Application::pickLogicalDevice()
+{
+	FQueueFamily families = findQueueFamilies(physicalDevice);
+
+	
+	float queuePriority = 1.0f;
+
+	//we're creating the queues to send commands
+	//in some cases the two queues can be in different devices that's why we use a set
+	//if it's the same they will have te same val
+	std::set<uint32_t> queueValues = { families.graphicsFamily.value(), families.presentFamily.value() };
+	std::vector<VkDeviceQueueCreateInfo> queues(queueValues.size());
+	
+	for(uint32_t queueVal : queueValues)
+	{
+		VkDeviceQueueCreateInfo queueInfo{};
+
+		queueInfo.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
+		queueInfo.queueFamilyIndex = queueVal;
+		queueInfo.queueCount = 1;
+		queueInfo.pQueuePriorities = &queuePriority;
+
+		queues.emplace_back(queueInfo);
+	}
+
+	VkPhysicalDeviceFeatures features{};
+
+	VkDeviceCreateInfo createInfo{};
+	createInfo.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
+
+	createInfo.pEnabledFeatures = &features;
+	
+	createInfo.pQueueCreateInfos = queues.data();
+	createInfo.queueCreateInfoCount = queues.size();
+
+	/*
+	 * We should reference the validations layer previously set in the instance
+	 * it's only required by the old implementation
+	 */
+
+	if(vkCreateDevice(physicalDevice, &createInfo, nullptr, &logicalDevice) != VK_SUCCESS)
+	{
+		std::cout << "Ay couldn't create the logical device" << std::endl;
+	}
+	else
+	{
+		vkGetDeviceQueue(logicalDevice, families.graphicsFamily.value(), 0, &graphicsQueue);
+		vkGetDeviceQueue(logicalDevice, families.presentFamily.value(), 0, &presentQueue);
+	}
+
+	
+}
+
 bool Application::canDeviceSupportExtensions(VkPhysicalDevice device)
 {
-	VkPhysicalDeviceProperties deviceProps;
-	vkGetPhysicalDeviceProperties(device, &deviceProps);
-
-	VkPhysicalDeviceFeatures deviceFeatures;
-	vkGetPhysicalDeviceFeatures(device, &deviceFeatures);
+	FQueueFamily familiy = findQueueFamilies(device);
 	
-	return deviceFeatures.geometryShader && deviceProps.deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU;
+	return familiy.isComplete();
+}
+
+Application::FQueueFamily Application::findQueueFamilies(VkPhysicalDevice device)
+{
+	FQueueFamily queueFamily{};
+
+	uint32_t familyQueueCount = 0;
+	vkGetPhysicalDeviceQueueFamilyProperties(device, &familyQueueCount, nullptr);
+
+	std::vector<VkQueueFamilyProperties> props(familyQueueCount);
+	vkGetPhysicalDeviceQueueFamilyProperties(device, &familyQueueCount, props.data());
+
+	for(int i = 0; i < props.size(); i++)
+	{
+		if(props[i].queueFlags & VK_QUEUE_GRAPHICS_BIT)
+		{
+			queueFamily.graphicsFamily = i;
+
+			if (queueFamily.isComplete())
+				break;
+		}
+		else
+		{
+			VkBool32 presentSupport = false;
+			vkGetPhysicalDeviceSurfaceSupportKHR(device, i, surface, &presentSupport);
+
+			if (presentSupport)
+			{
+				queueFamily.presentFamily = i;
+
+				if (queueFamily.isComplete())
+					break;
+			}
+		}
+	}
+
+	return queueFamily;
 }
