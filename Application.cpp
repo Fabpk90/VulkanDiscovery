@@ -180,7 +180,7 @@ void Application::pickPhysicalDevice()
 
 void Application::pickLogicalDevice()
 {
-	FQueueFamily families = findQueueFamilies(physicalDevice);
+	FQueueFamily families = queryQueueFamilies(physicalDevice);
 
 	
 	float queuePriority = 1.0f;
@@ -213,6 +213,9 @@ void Application::pickLogicalDevice()
 	createInfo.pQueueCreateInfos = queues.data();
 	createInfo.queueCreateInfoCount = queues.size();
 
+	createInfo.enabledExtensionCount = deviceExtensions.size();
+	createInfo.ppEnabledExtensionNames = deviceExtensions.data();
+
 	/*
 	 * We should reference the validations layer previously set in the instance
 	 * it's only required by the old implementation
@@ -233,12 +236,34 @@ void Application::pickLogicalDevice()
 
 bool Application::canDeviceSupportExtensions(VkPhysicalDevice device)
 {
-	FQueueFamily familiy = findQueueFamilies(device);
+	FQueueFamily familiy = queryQueueFamilies(device);
+	FSwapChainSupportDetails swapChainSupport = querySwapChainSupport(device);
+
 	
-	return familiy.isComplete();
+	return familiy.isComplete() && checkDeviceExtensionSupport(device)
+	&& (swapChainSupport.presentModes.empty() && swapChainSupport.formats.empty());
 }
 
-Application::FQueueFamily Application::findQueueFamilies(VkPhysicalDevice device)
+bool Application::checkDeviceExtensionSupport(VkPhysicalDevice device)
+{
+	uint32_t extensionCount;
+
+	vkEnumerateDeviceExtensionProperties(device, nullptr, &extensionCount, nullptr);
+
+	std::vector<VkExtensionProperties> availableExtensions(extensionCount);
+	vkEnumerateDeviceExtensionProperties(device, nullptr, &extensionCount, availableExtensions.data());
+
+	std::set<std::string> requiredExtensions(deviceExtensions.begin(), deviceExtensions.end());
+
+	for(const auto& extension : availableExtensions)
+	{
+		requiredExtensions.erase(extension.extensionName);
+	}
+	
+	return requiredExtensions.empty();
+}
+
+Application::FQueueFamily Application::queryQueueFamilies(VkPhysicalDevice device)
 {
 	FQueueFamily queueFamily{};
 
@@ -273,4 +298,33 @@ Application::FQueueFamily Application::findQueueFamilies(VkPhysicalDevice device
 	}
 
 	return queueFamily;
+}
+
+Application::FSwapChainSupportDetails Application::querySwapChainSupport(VkPhysicalDevice device)
+{
+	FSwapChainSupportDetails details;
+
+	vkGetPhysicalDeviceSurfaceCapabilitiesKHR(device, surface, &details.capabilities);
+
+	uint32_t formatCount;
+	vkGetPhysicalDeviceSurfaceFormatsKHR(device, surface, &formatCount, nullptr);
+
+	if (formatCount != 0)
+	{
+		vkGetPhysicalDeviceSurfaceFormatsKHR(device, surface, &formatCount, details.formats.data());
+	}
+	else
+		std::cout << "No format for the swap chain" << std::endl;
+
+	uint32_t presentModeCount;
+	vkGetPhysicalDeviceSurfacePresentModesKHR(device, surface, &presentModeCount, nullptr);
+
+	if (presentModeCount != 0)
+	{
+		vkGetPhysicalDeviceSurfacePresentModesKHR(device, surface, &presentModeCount, details.presentModes.data());
+	}
+	else
+		std::cout << "No present mode available for the swap chain " << std::endl;
+
+	return details;
 }

@@ -20,6 +20,13 @@ public:
 			&& presentFamily.has_value();
 		}
 	};
+
+	struct FSwapChainSupportDetails
+	{
+		VkSurfaceCapabilitiesKHR capabilities;
+		std::vector<VkSurfaceFormatKHR> formats;
+		std::vector<VkPresentModeKHR> presentModes;
+	};
 	
 private:
 	GLFWwindow* window;
@@ -36,6 +43,12 @@ private:
 	VkSurfaceKHR surface;
 	
 	std::vector<VkLayerProperties> availableLayers;
+
+	//used to check if extensions are available (for now the swapchain, to present stuff on the screen)
+	const std::vector<const char*> deviceExtensions = 
+	{
+		VK_KHR_SWAPCHAIN_EXTENSION_NAME
+	};
 	
 public:
 	Application(int32_t height, int32_t width, const char* windowName);
@@ -47,10 +60,15 @@ public:
 
 private:
 	void createSurface();
-	bool checkValidationLayerSupport();
+	
 	void pickPhysicalDevice();
 	void pickLogicalDevice();
+
+	bool checkValidationLayerSupport();
+	
 	bool canDeviceSupportExtensions(VkPhysicalDevice device);
-	FQueueFamily findQueueFamilies(VkPhysicalDevice device);
+	bool checkDeviceExtensionSupport(VkPhysicalDevice device);
+	FQueueFamily queryQueueFamilies(VkPhysicalDevice device);
+	FSwapChainSupportDetails querySwapChainSupport(VkPhysicalDevice device);
 };
 
