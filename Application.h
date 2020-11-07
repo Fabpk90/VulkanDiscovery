@@ -41,8 +41,14 @@ private:
 	VkQueue presentQueue;
 
 	VkSurfaceKHR surface;
+	VkSwapchainKHR swapchain;
 	
 	std::vector<VkLayerProperties> availableLayers;
+
+	std::vector<VkImage> swapChainImages;
+	VkFormat swapChainImageFormat;
+	VkExtent2D swapChainExtent;
+	
 
 	//used to check if extensions are available (for now the swapchain, to present stuff on the screen)
 	const std::vector<const char*> deviceExtensions = 
@@ -60,9 +66,14 @@ public:
 
 private:
 	void createSurface();
+	void createSwapChain();
 	
 	void pickPhysicalDevice();
 	void pickLogicalDevice();
+
+	VkSurfaceFormatKHR chooseSwapSurfaceFormat(const std::vector<VkSurfaceFormatKHR>& availableFormats);
+	VkPresentModeKHR chooseSwapPresentMode(const std::vector<VkPresentModeKHR>& availablePresentMode);
+	VkExtent2D chooseSwapExtent(const VkSurfaceCapabilitiesKHR& capabilities);
 
 	bool checkValidationLayerSupport();
 	
