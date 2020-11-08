@@ -48,7 +48,11 @@ private:
 	std::vector<VkImage> swapChainImages;
 	VkFormat swapChainImageFormat;
 	VkExtent2D swapChainExtent;
-	
+	std::vector<VkImageView> swapChainImageViews;
+
+	VkRenderPass renderPass;
+	VkPipelineLayout pipelineLayout;
+	VkPipeline pipeline;
 
 	//used to check if extensions are available (for now the swapchain, to present stuff on the screen)
 	const std::vector<const char*> deviceExtensions = 
@@ -64,9 +68,16 @@ public:
 
 	void run();
 
+	static std::vector<char> readFile(const char* fileName);
+
 private:
 	void createSurface();
 	void createSwapChain();
+	void createImageViews();
+	void createRenderPass();
+	void createGraphicPipeline();
+
+	VkShaderModule createShaderModule(const std::vector<char>& code);
 	
 	void pickPhysicalDevice();
 	void pickLogicalDevice();
