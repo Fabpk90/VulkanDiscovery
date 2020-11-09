@@ -49,10 +49,17 @@ private:
 	VkFormat swapChainImageFormat;
 	VkExtent2D swapChainExtent;
 	std::vector<VkImageView> swapChainImageViews;
+	std::vector<VkFramebuffer> swapChainFramebuffers;
 
 	VkRenderPass renderPass;
 	VkPipelineLayout pipelineLayout;
 	VkPipeline pipeline;
+
+	VkCommandPool commandPool;
+	std::vector<VkCommandBuffer> commandBuffers;
+
+	VkSemaphore imageAvailableSemaphore;
+	VkSemaphore renderFinishedSemaphore;
 
 	//used to check if extensions are available (for now the swapchain, to present stuff on the screen)
 	const std::vector<const char*> deviceExtensions = 
@@ -76,7 +83,13 @@ private:
 	void createImageViews();
 	void createRenderPass();
 	void createGraphicPipeline();
+	void creteFrameBuffer();
+	void createCommandPool();
+	void createCommandBuffers();
+	void createSemaphores();
 
+	void drawFrame();
+	
 	VkShaderModule createShaderModule(const std::vector<char>& code);
 	
 	void pickPhysicalDevice();
