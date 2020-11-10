@@ -95,6 +95,13 @@ Application::Application(int32_t height, int32_t width, const char* windowName)
 	pickLogicalDevice();
 
 	createSwapChain();
+	createImageViews();
+	createRenderPass();
+	createGraphicPipeline();
+	createFrameBuffer();
+	createCommandPool();
+	createCommandBuffers();
+	createSemaphores();
 }
 
 Application::~Application()
@@ -431,7 +438,7 @@ void Application::createGraphicPipeline()
 	vkDestroyShaderModule(logicalDevice, fragShaderModule, nullptr);
 }
 
-void Application::creteFrameBuffer()
+void Application::createFrameBuffer()
 {
 	swapChainFramebuffers.resize(swapChainImageViews.size());
 
@@ -574,6 +581,19 @@ void Application::drawFrame()
 	dependency.dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
 	dependency.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
 
+
+	VkPresentInfoKHR presentInfo{};
+	presentInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
+
+	presentInfo.waitSemaphoreCount = 1;
+	presentInfo.pWaitSemaphores = signalSemaphores;
+
+	VkSwapchainKHR swapChains[] = { swapchain };
+	presentInfo.pSwapchains = swapChains;
+	presentInfo.swapchainCount = 1;
+	presentInfo.pImageIndices = &imageIndex;
+
+	vkQueuePresentKHR(presentQueue, &presentInfo);
 	
 }
 

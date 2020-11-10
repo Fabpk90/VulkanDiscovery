@@ -83,7 +83,7 @@ private:
 	void createImageViews();
 	void createRenderPass();
 	void createGraphicPipeline();
-	void creteFrameBuffer();
+	void createFrameBuffer();
 	void createCommandPool();
 	void createCommandBuffers();
 	void createSemaphores();
