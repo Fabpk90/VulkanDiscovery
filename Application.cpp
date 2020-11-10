@@ -30,7 +30,7 @@ Application::Application(int32_t height, int32_t width, const char* windowName)
 	uint32_t availableLayersCount;
 	vkEnumerateInstanceLayerProperties(&availableLayersCount, nullptr);
 
-	availableLayers.reserve(availableLayersCount);
+	availableLayers.resize(availableLayersCount);
 	vkEnumerateInstanceLayerProperties(&availableLayersCount, availableLayers.data());
 	
 
@@ -55,10 +55,18 @@ Application::Application(int32_t height, int32_t width, const char* windowName)
 	createInfo.enabledExtensionCount = extensionRequired;
 	createInfo.ppEnabledExtensionNames = extensionName;
 
-	if (enableValidationLayer && checkValidationLayerSupport())
+	if (enableValidationLayer)
 	{
-		createInfo.enabledLayerCount = validationLayers.size();
-		createInfo.ppEnabledLayerNames = validationLayers.data();
+		if(!checkValidationLayerSupport())
+		{
+			std::cout << "Validation layers requested but not available !" << std::endl;
+		}
+		else
+		{
+			createInfo.enabledLayerCount = validationLayers.size();
+			createInfo.ppEnabledLayerNames = validationLayers.data();
+		}
+		
 	}
 	else
 		createInfo.enabledLayerCount = 0;
@@ -675,13 +683,14 @@ void Application::pickLogicalDevice()
 	//in some cases the two queues can be in different devices that's why we use a set
 	//if it's the same they will have te same val
 	std::set<uint32_t> queueValues = { families.graphicsFamily.value(), families.presentFamily.value() };
-	std::vector<VkDeviceQueueCreateInfo> queues(queueValues.size());
+	std::vector<VkDeviceQueueCreateInfo> queues;
+	queues.reserve(queueValues.size());
 	
 	for(uint32_t queueVal : queueValues)
 	{
 		VkDeviceQueueCreateInfo queueInfo{};
 
-		queueInfo.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
+		queueInfo.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
 		queueInfo.queueFamilyIndex = queueVal;
 		queueInfo.queueCount = 1;
 		queueInfo.pQueuePriorities = &queuePriority;
