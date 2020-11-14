@@ -29,6 +29,7 @@ public:
 	};
 	
 private:
+	
 	GLFWwindow* window;
 	int32_t height;
 	int32_t width;
@@ -58,14 +59,22 @@ private:
 	VkCommandPool commandPool;
 	std::vector<VkCommandBuffer> commandBuffers;
 
-	VkSemaphore imageAvailableSemaphore;
-	VkSemaphore renderFinishedSemaphore;
+	std::vector<VkSemaphore> imageAvailableSemaphores;
+	std::vector<VkSemaphore> renderFinishedSemaphores;
+
+	std::vector<VkFence> inFlightFences;
+	std::vector<VkFence> imagesInFlight; //used to wait for the image to be free to use
+	size_t currentFrame = 0;
+	
 
 	//used to check if extensions are available (for now the swapchain, to present stuff on the screen)
 	const std::vector<const char*> deviceExtensions = 
 	{
 		VK_KHR_SWAPCHAIN_EXTENSION_NAME
 	};
+
+public:
+	bool framebufferResized = false;
 	
 public:
 	Application(int32_t height, int32_t width, const char* windowName);
@@ -78,15 +87,20 @@ public:
 	static std::vector<char> readFile(const char* fileName);
 
 private:
+	void cleanSwapChain();
+	
 	void createSurface();
 	void createSwapChain();
 	void createImageViews();
 	void createRenderPass();
-	void createGraphicPipeline();
+	void createGraphicsPipeline();
 	void createFrameBuffer();
 	void createCommandPool();
 	void createCommandBuffers();
 	void createSemaphores();
+	void createFences();
+
+	void recreateSwapChain();
 
 	void drawFrame();
 	

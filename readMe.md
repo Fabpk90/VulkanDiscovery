@@ -1,8 +1,8 @@
 # A learning Vulkan project !
 The purpose of this project is to learn Vulkan and make a simple game engine with a forward renderer.
 
-# Material I use for this
-<https://renderdoc.org/vulkan-in-30-minutes.html> Good and quick overview of vulkan <br/>
+# Material I am using for this
+<https://renderdoc.org/vulkan-in-30-minutes.html> Good and quick overview of vulkan. <br/>
 <https://vulkan-tutorial.com/> Awesome tutorial, good pacing and information, this is the tutorial I am following !
 
 
@@ -17,3 +17,4 @@ The purpose of this project is to learn Vulkan and make a simple game engine wit
     - [x] Create render pass
 - [x] Create my first command
 - [x] Create my first triangle yay !
+- [x] Synchronized the pipeline

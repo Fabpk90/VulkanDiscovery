@@ -6,7 +6,7 @@
 #include <set>
 #include <vector>
 
-
+constexpr int cmaxFramesInFlight = 2;
 
 const std::vector<const char*> validationLayers =
 {
@@ -14,10 +14,19 @@ const std::vector<const char*> validationLayers =
 };
 
 #ifdef NDEBUG
-	const bool enableValidationLayer = false;
+	constexpr bool enableValidationLayer = false;
 #else
-	const bool enableValidationLayer = true;
+	constexpr  bool enableValidationLayer = true;
 #endif
+
+static void framebufferResizeCallback(GLFWwindow* window, int width, int height)
+{
+	Application* p = static_cast<Application*>(glfwGetWindowUserPointer(window));
+
+	p->framebufferResized = true;
+
+	std::cout << "eyy" << std::endl;
+}
 
 Application::Application(int32_t height, int32_t width, const char* windowName)
 	: height(height), width(width)
@@ -26,6 +35,9 @@ Application::Application(int32_t height, int32_t width, const char* windowName)
 
 	glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
 	window = glfwCreateWindow(width, height, windowName, nullptr, nullptr);
+
+	glfwSetWindowUserPointer(window, this);
+	glfwSetWindowSizeCallback(window, framebufferResizeCallback);
 
 	uint32_t availableLayersCount;
 	vkEnumerateInstanceLayerProperties(&availableLayersCount, nullptr);
@@ -105,7 +117,7 @@ Application::Application(int32_t height, int32_t width, const char* windowName)
 	createSwapChain();
 	createImageViews();
 	createRenderPass();
-	createGraphicPipeline();
+	createGraphicsPipeline();
 	createFrameBuffer();
 	createCommandPool();
 	createCommandBuffers();
@@ -114,25 +126,17 @@ Application::Application(int32_t height, int32_t width, const char* windowName)
 
 Application::~Application()
 {
-	vkDestroySemaphore(logicalDevice, imageAvailableSemaphore, nullptr);
-	vkDestroySemaphore(logicalDevice, renderFinishedSemaphore, nullptr);
-	
-	vkDestroyCommandPool(logicalDevice, commandPool, nullptr);
-	
-	for(auto framebuffer : swapChainFramebuffers)
-	{
-		vkDestroyFramebuffer(logicalDevice, framebuffer, nullptr);
-	}
-	
-	vkDestroyPipeline(logicalDevice, pipeline, nullptr);
-	vkDestroyRenderPass(logicalDevice, renderPass, nullptr);
-	vkDestroyPipelineLayout(logicalDevice, pipelineLayout, nullptr);
+	cleanSwapChain();
 
-	for(auto imageView : swapChainImageViews)
+	vkDestroyCommandPool(logicalDevice, commandPool, nullptr);
+
+	for(int i = 0; i < cmaxFramesInFlight; i++)
 	{
-		vkDestroyImageView(logicalDevice, imageView, nullptr);
+		vkDestroySemaphore(logicalDevice, imageAvailableSemaphores[i], nullptr);
+		vkDestroySemaphore(logicalDevice, renderFinishedSemaphores[i], nullptr);
+		vkDestroyFence(logicalDevice, inFlightFences[i], nullptr);
 	}
-	vkDestroySwapchainKHR(logicalDevice, swapchain, nullptr);
+	
 	vkDestroyDevice(logicalDevice, nullptr);
 	
 	vkDestroySurfaceKHR(instance, surface, nullptr);
@@ -155,6 +159,9 @@ void Application::run()
 			glfwSetWindowShouldClose(window, GLFW_TRUE);
 		}
 	}
+
+	//waits for the device to finish up, before freeing allocated memory (dtor)
+	vkDeviceWaitIdle(logicalDevice);
 }
 
 std::vector<char> Application::readFile(const char* fileName)
@@ -173,6 +180,27 @@ std::vector<char> Application::readFile(const char* fileName)
 	file.read(buffer.data(), fileSize);
 
 	return buffer;
+}
+
+void Application::cleanSwapChain()
+{
+	for (auto framebuffer : swapChainFramebuffers)
+	{
+		vkDestroyFramebuffer(logicalDevice, framebuffer, nullptr);
+	}
+
+	vkFreeCommandBuffers(logicalDevice, commandPool, commandBuffers.size(), commandBuffers.data());
+
+	vkDestroyPipeline(logicalDevice, pipeline, nullptr);
+	vkDestroyRenderPass(logicalDevice, renderPass, nullptr);
+	vkDestroyPipelineLayout(logicalDevice, pipelineLayout, nullptr);
+
+	for (auto imageView : swapChainImageViews)
+	{
+		vkDestroyImageView(logicalDevice, imageView, nullptr);
+	}
+
+	vkDestroySwapchainKHR(logicalDevice, swapchain, nullptr);
 }
 
 void Application::createSurface()
@@ -311,12 +339,24 @@ void Application::createRenderPass()
 	subpass.pColorAttachments = &colorAttachmentRef;
 	subpass.colorAttachmentCount = 1;
 
+	VkSubpassDependency dependency{};
+	dependency.srcSubpass = VK_SUBPASS_EXTERNAL;
+	dependency.dstSubpass = 0; // should always be > than src
+
+	dependency.srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+	dependency.srcAccessMask = 0;
+
+	dependency.dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+	dependency.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+
 	VkRenderPassCreateInfo renderPassInfo{};
 	renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
 	renderPassInfo.attachmentCount = 1;
 	renderPassInfo.pAttachments = &colorAttachment;
 	renderPassInfo.subpassCount = 1;
 	renderPassInfo.pSubpasses = &subpass;
+	renderPassInfo.dependencyCount = 1;
+	renderPassInfo.pDependencies = &dependency;
 
 	if(vkCreateRenderPass(logicalDevice, &renderPassInfo, nullptr, &renderPass) != VK_SUCCESS)
 	{
@@ -324,7 +364,7 @@ void Application::createRenderPass()
 	}
 }
 
-void Application::createGraphicPipeline()
+void Application::createGraphicsPipeline()
 {
 	auto vertShaderCode = readFile("Shaders/vert.spv");
 	auto fragShaderCode = readFile("Shaders/frag.spv");
@@ -542,27 +582,96 @@ void Application::createCommandBuffers()
 
 void Application::createSemaphores()
 {
+	imageAvailableSemaphores.resize(cmaxFramesInFlight);
+	renderFinishedSemaphores.resize(cmaxFramesInFlight);
+	
 	VkSemaphoreCreateInfo semaphoreInfo{};
 	semaphoreInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
 
-	if(vkCreateSemaphore(logicalDevice, &semaphoreInfo, nullptr, &imageAvailableSemaphore) != VK_SUCCESS
-		|| vkCreateSemaphore(logicalDevice, &semaphoreInfo, nullptr, &renderFinishedSemaphore) != VK_SUCCESS)
+	for(int i = 0; i < cmaxFramesInFlight; i++)
 	{
-		std::cout << "Unable to create the semaphores" << std::endl;
+		if (vkCreateSemaphore(logicalDevice, &semaphoreInfo, nullptr, &imageAvailableSemaphores[i]) != VK_SUCCESS
+			|| vkCreateSemaphore(logicalDevice, &semaphoreInfo, nullptr, &renderFinishedSemaphores[i]) != VK_SUCCESS)
+		{
+			std::cout << "Unable to create the semaphores" << std::endl;
+		}
 	}
+
+	createFences();
+}
+
+void Application::createFences()
+{
+	inFlightFences.resize(cmaxFramesInFlight);
+	imagesInFlight.resize(swapChainImages.size(), VK_NULL_HANDLE);
+	
+	VkFenceCreateInfo fenceInfo{};
+	fenceInfo.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
+	fenceInfo.flags = VK_FENCE_CREATE_SIGNALED_BIT; //we're signaling that the frame is rendered, otherwise we will forever the first frame
+///	doesn't seem to change anything
+///	TODO: investigate why this ^
+	
+	for(int i = 0; i < cmaxFramesInFlight; i++)
+	{
+		if (vkCreateFence(logicalDevice, &fenceInfo, nullptr, &inFlightFences[i]) != VK_SUCCESS)
+		{
+			std::cout << "Unable to create fence !" << std::endl;
+		}
+	}
+	
+}
+
+void Application::recreateSwapChain()
+{
+	std::cout << "Recreating the swap chain" << std::endl;
+
+	//are we minimized ?
+	int width = 0, height = 0;
+	glfwGetFramebufferSize(window, &width, &height);
+	while (width == 0 || height == 0) {
+		glfwGetFramebufferSize(window, &width, &height);
+		glfwWaitEvents();
+	}
+	
+	vkDeviceWaitIdle(logicalDevice);
+
+
+	cleanSwapChain();
+	
+	createSwapChain();
+	createImageViews(); // the images are changed since there is a new swapchain
+	createRenderPass(); // recreating the render pass, in case the format of the image changes
+	createGraphicsPipeline(); // Viewport and scissor have change so we need to recreate the pipeline (dynamic states can be used, as these two params can be changed with it without recreating a pipeline)
+	createFrameBuffer(); // depends on the images so we need to recreate them
+	createCommandBuffers(); // same thing as the framebuffers
 }
 
 void Application::drawFrame()
 {
+	vkWaitForFences(logicalDevice, 1, &inFlightFences[currentFrame], VK_TRUE, UINT64_MAX);
+	
 	uint32_t imageIndex;
+	VkResult res = vkAcquireNextImageKHR(logicalDevice, swapchain, UINT64_MAX, imageAvailableSemaphores[currentFrame], VK_NULL_HANDLE, &imageIndex);
 
-	vkAcquireNextImageKHR(logicalDevice, swapchain, UINT64_MAX, imageAvailableSemaphore, VK_NULL_HANDLE
-		, &imageIndex);
+	if (res == VK_ERROR_OUT_OF_DATE_KHR)
+	{
+		recreateSwapChain();
+		return; // we redraw from the top
+	}
+
+	if (imagesInFlight[currentFrame] != VK_NULL_HANDLE)
+	{
+		//we wait if the image we need is in use
+		vkWaitForFences(logicalDevice, 1, &imagesInFlight[currentFrame], VK_TRUE, UINT64_MAX);
+	}
+
+	imagesInFlight[currentFrame] = inFlightFences[currentFrame];
+
 
 	VkSubmitInfo submitInfo{};
 	submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
 
-	VkSemaphore waitSemaphore[] = { imageAvailableSemaphore };
+	VkSemaphore waitSemaphore[] = { imageAvailableSemaphores[currentFrame] };
 	VkPipelineStageFlags waitStages[] = { VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT };
 	submitInfo.waitSemaphoreCount = 1;
 	submitInfo.pWaitSemaphores = waitSemaphore;
@@ -570,24 +679,17 @@ void Application::drawFrame()
 	submitInfo.commandBufferCount = 1;
 	submitInfo.pCommandBuffers = &commandBuffers[imageIndex];
 
-	VkSemaphore signalSemaphores[] = { renderFinishedSemaphore };
+	VkSemaphore signalSemaphores[] = { renderFinishedSemaphores[currentFrame] };
 	submitInfo.signalSemaphoreCount = 1;
-	submitInfo.pSignalSemaphores = signalSemaphores;
+	submitInfo.pSignalSemaphores = signalSemaphores;	
+	
 
-	if(vkQueueSubmit(graphicsQueue, 1, &submitInfo, VK_NULL_HANDLE) != VK_SUCCESS)
+	vkResetFences(logicalDevice, 1, &inFlightFences[currentFrame]);
+	
+	if(vkQueueSubmit(graphicsQueue, 1, &submitInfo, inFlightFences[currentFrame]) != VK_SUCCESS)
 	{
 		std::cout << "Unable to submit the queue" << std::endl;
 	}
-
-	VkSubpassDependency dependency{};
-	dependency.srcSubpass = VK_SUBPASS_EXTERNAL;
-	dependency.dstSubpass = 0; // should always be > than src
-
-	dependency.srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
-	dependency.srcAccessMask = 0;
-
-	dependency.dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
-	dependency.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
 
 
 	VkPresentInfoKHR presentInfo{};
@@ -601,8 +703,16 @@ void Application::drawFrame()
 	presentInfo.swapchainCount = 1;
 	presentInfo.pImageIndices = &imageIndex;
 
-	vkQueuePresentKHR(presentQueue, &presentInfo);
-	
+	res = vkQueuePresentKHR(presentQueue, &presentInfo);
+
+	//if the swapchain is not good er out of date(can't draw with that)
+	if (res == VK_ERROR_OUT_OF_DATE_KHR || res == VK_SUBOPTIMAL_KHR || framebufferResized)
+	{
+		framebufferResized = false;
+		recreateSwapChain();
+	}
+
+	currentFrame = (currentFrame + 1) % cmaxFramesInFlight;
 }
 
 VkShaderModule Application::createShaderModule(const std::vector<char>& code)
